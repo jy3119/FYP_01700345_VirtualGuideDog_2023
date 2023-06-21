@@ -1,66 +1,78 @@
+import serial
 import numpy as np
-import math
-from bluepy.btle import Peripheral, UUID
+import matplotlib.pyplot as plt
 
+# Connect to the Arduino
+ser = serial.Serial('/dev/ttyACM0', 9600)
 
-def receive_data():
-    data = SerialData() # dummy placeholder for real data
-    return data
+# Initialize an empty occupancy grid
+grid_size = 100
+occupancy_grid = np.zeros((grid_size, grid_size))
 
-def build_occupancy_grid(data):
-    occupancy_grid = np.zeros((10, 10))  # replace with actual grid size
-    for d in data:
-        occupancy_grid[d.y][d.x] = d.state
-    return occupancy_grid
+# Initialize a repulsive potential field
+repulsive_field = np.zeros((grid_size, grid_size))
 
-def compute_potential_field(occupancy_grid, goal=[9, 9]): # top right corner as goal
-    grid_size = occupancy_grid.shape
-    potential_field = np.zeros(grid_size)
+# Repulsive coefficients (obstacles and falls)
+eta_obstacle = 500.0
+eta_fall = 1000.0
 
-    # Apply attractive potential from goal
-    for i in range(grid_size[0]):
-        for j in range(grid_size[1]):
-            potential_field[i][j] += np.linalg.norm(np.array([i,j])-np.array(goal))
+# Distance correction for inclined sensors
+cos45 = np.cos(np.radians(45))
 
-    # Apply repulsive potential from obstacles
-    for i in range(grid_size[0]):
-        for j in range(grid_size[1]):
-            if occupancy_grid[i][j] == 1:  # obstacle
-                potential_field[i][j] += 100
-            elif occupancy_grid[i][j] == 3:  # falls
-                potential_field[i][j] += 200
+# Function to update the occupancy grid based on sensor readings
+def update_occupancy_grid(angle, top_dist, mid_dist, bot_dist, sudden_change):
+    # Update the grid based on each sensor reading
+    for dist, offset in zip([top_dist, mid_dist, bot_dist], [-1, 0, 1]):
+        # Correct the distance for the top and bottom sensors
+        if offset != 0:
+            dist *= cos45
 
-    return potential_field
+        # Calculate the grid coordinates of the detected obstacle
+        x = grid_size // 2 + int(dist * np.sin(angle))
+        y = grid_size // 2 + int(dist * np.cos(angle)) + offset
 
-def compute_gradient(potential_field, current_position):
-    dx = np.gradient(potential_field, axis=1)[current_position[1]][current_position[0]]
-    dy = np.gradient(potential_field, axis=0)[current_position[1]][current_position[0]]
-    return dx, dy
+        # Update the occupancy grid
+        if 0 <= x < grid_size and 0 <= y < grid_size:
+            occupancy_grid[x, y] = 2 if sudden_change else 1
 
-def get_angle(dx, dy):
-    # Your coordinate system has the y-axis as -90 and the x-axis as 90.
-    # The diagonal from origin to the top right corner represents 0 degrees.
-    angle = math.atan2(dy, dx)
-    angle = math.degrees(angle)
-    return angle
+while True:
+    # Read a line from the Arduino
+    line = ser.readline().decode().strip()
 
-def get_safest_direction(potential_field, current_position=[0, 0]):
-    dx, dy = compute_gradient(potential_field, current_position)
-    return get_angle(dx, dy)
+    # Parse the data
+    angle, top_dist, mid_dist, bot_dist, sudden_change = map(int, line.split(','))
 
-def main():
-    p = Peripheral('your_BLE_device', 'public')  # connect to BLE device
-    svc = p.getServiceByUUID('your_BLE_service')  # replace with your service UUID
-    ch = svc.getCharacteristics('your_BLE_characteristic')[0]  # replace with your characteristic UUID
+    # Convert angle to radians and adjust it to be in the range [-pi/2, pi/2]
+    angle_rad = np.radians(angle - 90)
 
-    while True:
-        data = receive_data()
-        occupancy_grid = build_occupancy_grid(data)
-        potential_field = compute_potential_field(occupancy_grid)
-        safest_direction = get_safest_direction(potential_field)
-        print(f"Safest direction to walk in: {safest_direction} degrees")
+    # Update occupancy grid based on sensor readings
+    update_occupancy_grid(angle_rad, top_dist, mid_dist, bot_dist, sudden_change)
 
-        # write the safest direction to the BLE device
-        ch.write(bytes(str(safest_direction), 'utf-8'))
+    # Calculate the potential field
+    for x in range(grid_size):
+        for y in range(grid_size):
+            pos = np.array([x, y])
 
-        time.sleep(1)  # delay before next update
+            # Repulsive potential (from the obstacles)
+            U_rep = 0
+            if occupancy_grid[x, y] != 0:
+                eta = eta_fall if occupancy_grid[x, y] == 2 else eta_obstacle
+                U_rep = 0.5 * eta / occupancy_grid[x, y]
+
+            # Total potential
+            repulsive_field[x, y] = U_rep
+
+    # Calculate the direction of the safest path (gradient of the potential field)
+    grad_field = np.gradient(repulsive_field)
+    safe_direction = np.arctan2(grad_field[1][grid_size // 2, grid_size - 1], grad_field[0][grid_size // 2, grid_size - 1])
+
+    # Convert the direction to degrees and adjust it to be in the range [-90, 90]
+    safe_direction_deg = np.degrees(safe_direction) + 90
+
+    print("Safe direction (in degrees): ", safe_direction_deg)
+
+    # Display the occupancy grid
+    plt.imshow(occupancy_grid)
+    plt.pause(0.01)  # Pause to allow the plot to update
+
+ser.close()
