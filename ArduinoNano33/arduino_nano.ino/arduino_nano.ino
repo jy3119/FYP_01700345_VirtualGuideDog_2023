@@ -9,12 +9,6 @@ BLEIntCharacteristic safeDirectionChar("2A37", BLERead | BLEWrite);
 // Vibration motors connected to pins 2-6
 int motors[5] = {2, 3, 4, 5, 6};
 
-// Angle thresholds for the motors
-int thresholds[5] = {0, 45, 90, 135, 180};
-
-// Current safe direction
-int safeDirection = 0;
-
 // Update frequency for the Madgwick filter
 float updateFreq = 36.0;
 
@@ -77,9 +71,6 @@ void loop() {
       pitch = filter.getPitch();
       yaw = filter.getYaw();
 
-      // Since yaw ranges from -180 to 180, convert it to 0 to 180
-      if (yaw < 0) yaw = 180 + yaw;
-
       // Initialize all motors to off
       for (int i = 0; i < 5; i++) {
         digitalWrite(motors[i], LOW);
@@ -87,17 +78,29 @@ void loop() {
 
       // Update safe direction if there's new data
       if (safeDirectionChar.written()) {
-        safeDirection = safeDirectionChar.value();
-      }
+        int safeDirection = safeDirectionChar.value();
 
-      // Calculate the difference between the safe direction and the current head direction
-      int angleDiff = safeDirection - yaw;
+        // Calculate the difference between the safe direction and the current head direction
+        int angleDiff = safeDirection - yaw;
 
-      // Turn on the appropriate motor based on the angle difference
-      for (int i = 0; i < 5; i++) {
-        if (angleDiff <= thresholds[i]) {
-          digitalWrite(motors[i], HIGH);
-          break;
+        // Only provide haptic feedback if the safe direction is in front
+        if (angleDiff >= -90 && angleDiff <= 90) {
+          // Turn on the appropriate motor based on the angle difference
+          if (angleDiff >= -90 && angleDiff < -54) {
+            digitalWrite(motors[0], HIGH); // far left
+          }
+          else if (angleDiff >= -54 && angleDiff < -18) {
+            digitalWrite(motors[1], HIGH); // left
+          }
+          else if (angleDiff >= -18 && angleDiff < 18) {
+            digitalWrite(motors[2], HIGH); // center
+          }
+          else if (angleDiff >= 18 && angleDiff < 54) {
+            digitalWrite(motors[3], HIGH); // right
+          }
+          else if (angleDiff >= 54 && angleDiff <= 90) {
+            digitalWrite(motors[4], HIGH); // far right
+          }
         }
       }
     }
