@@ -35,12 +35,13 @@ def process_data(data):
     sudden_change_downward = int(data[4])
 
     # Update occupancy grid
+    
     if dist_top < MAX_DISTANCE:
-        grid[angle, min(dist_top, grid_size[1] - 1)] = 1
+        grid[angle, min(int(dist_top), grid_size[1] - 1)] = 1
     if dist_middle < MAX_DISTANCE:
-        grid[angle, min(dist_middle, grid_size[1] - 1)] = 1
+        grid[angle, min(int(dist_middle), grid_size[1] - 1)] = 1
     if dist_bottom < MAX_DISTANCE:
-        grid[angle, min(dist_bottom, grid_size[1] - 1)] = 1
+        grid[angle, min(int(dist_bottom), grid_size[1] - 1)] = 1
     if sudden_change_downward == 1:
         grid[angle, :] = 3  # indicate a fall
 
