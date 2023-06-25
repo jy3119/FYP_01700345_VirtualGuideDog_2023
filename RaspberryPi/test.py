@@ -11,6 +11,8 @@ ser = serial.Serial('/dev/ttyACM0', 9600)  # change to your Arduino's port
 ble_uuid = UUID('fc0a')
 ble_service_uuid = UUID('180D')
 
+MAX_DISTANCE = 300
+
 class NotificationDelegate(DefaultDelegate):
     def __init__(self):
         DefaultDelegate.__init__(self)
