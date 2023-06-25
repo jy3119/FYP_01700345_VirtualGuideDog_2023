@@ -82,7 +82,7 @@ while True:
         # Connect to the Arduino Nano 33 BLE
         # peripheral = Peripheral()
         peripheral = Peripheral('A1:DC:B9:DC:2E:BA')
-        peripheral.connect('A1:DC:B9:DC:2E:BA')
+        # peripheral.connect('A1:DC:B9:DC:2E:BA')
 
         # Discover the service and characteristic
         service = peripheral.getServiceByUUID(ble_service_uuid)
