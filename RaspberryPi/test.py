@@ -1,84 +1,28 @@
 import serial
 import numpy as np
-from bleno import *
+from bluepy.btle import Peripheral, UUID, DefaultDelegate
 import time
 import math
 
 # Serial communication
 ser = serial.Serial('/dev/ttyACM0', 9600)  # change to your Arduino's port
-bleno = Bleno()
 
-# Occupancy grid size
-grid_size = (360, 180)
+# Bluetooth
+ble_uuid = UUID('fc0a')
+ble_service_uuid = UUID('180D')
 
-# Repulsive potential field parameters
-K_rep = 1.0
-d_rep = 20.0
-
-# Setup Bluetooth
-class AngleCharacteristic(Characteristic):
+class NotificationDelegate(DefaultDelegate):
     def __init__(self):
-        Characteristic.__init__(self, {
-            'uuid': 'fc0a',
-            'properties': ['notify'],
-            'value': None
-        })
-        self._value = 0
-        self._updateValueCallback = None
+        DefaultDelegate.__init__(self)
 
-    def onSubscribe(self, maxValueSize, updateValueCallback):
-        print('AngleCharacteristic - onSubscribe')
-        self._updateValueCallback = updateValueCallback
-
-    def onUnsubscribe(self):
-        print('AngleCharacteristic - onUnsubscribe')
-        self._updateValueCallback = None
-
-    def notify(self, angle):
-        if self._updateValueCallback:
-            print('Sending notification with value:', str(angle))
-            self._updateValueCallback(str(angle).encode())
-
-def onStateChange(state):
-    print('on -> stateChange: ' + state)
-    if (state == 'poweredOn'):
-        bleno.startAdvertising('raspberrypi', ['fc0a'])
-    elif (state == 'poweredOff'):
-        bleno.stopAdvertising()
-
-bleno.on('stateChange', onStateChange)
-
-angle_char = AngleCharacteristic()
-bleno.on('advertisingStart', lambda err: bleno.setServices([bleno.PrimaryService({
-    'uuid': 'fc0a',
-    'characteristics': [
-        angle_char
-    ]
-})]))
-
-bleno.start()
-
-# Potential field algorithm
-def potential_field(grid):
-    U_rep = np.zeros(grid.shape)
-    min_val = np.inf
-    min_idx = None
-
-    for i in range(grid.shape[1]):
-        for j in range(grid.shape[0]):
-            if grid[j, i] == 1:  # obstacle
-                U_rep[j, i] = 0.5 * K_rep * ((1.0/d_rep) ** 2)
-            else:  # free space
-                U_rep[j, i] = 0
-
-            if U_rep[j, i] < min_val:
-                min_val = U_rep[j, i]
-                min_idx = (j, i)
-
-    return min_idx
+    def handleNotification(self, cHandle, data):
+        angle = int.from_bytes(data, byteorder='little')
+        print('Received angle:', angle)
+        # TODO: Perform the desired action with the received angle
 
 # Process sensor data
 def process_data(data):
+    grid_size = (360, 180)
     grid = np.zeros(grid_size)
     data = data.split(',')
     angle = int(data[0])
@@ -105,6 +49,32 @@ def process_data(data):
 while True:
     data = ser.readline().strip()
     angle = process_data(data)
-    angle_char.notify(angle)
+    
+    try:
+        # Connect to the Arduino Nano 33 BLE
+        peripheral = Peripheral()
+        peripheral.connect('your_arduino_ble_mac_address')
+
+        # Discover the service and characteristic
+        service = peripheral.getServiceByUUID(ble_service_uuid)
+        characteristic = service.getCharacteristics(ble_uuid)[0]
+
+        # Enable notifications
+        delegate = NotificationDelegate()
+        peripheral.setDelegate(delegate)
+        peripheral.writeCharacteristic(characteristic.valHandle + 1, b"\x01\x00", True)
+
+        # Send the angle as a notification
+        characteristic.write(bytes([angle]))
+
+        # Wait for notifications
+        while peripheral.waitForNotifications(1):
+            pass
+
+        # Disconnect from the Arduino Nano 33 BLE
+        peripheral.disconnect()
+    except Exception as e:
+        print('Error:', str(e))
+
     time.sleep(0.01)
 
