@@ -8,8 +8,8 @@ import math
 ser = serial.Serial('/dev/ttyACM0', 9600)  # change to your Arduino's port
 
 # Bluetooth
-ble_uuid = UUID('fc0a')
-ble_service_uuid = UUID('180D')
+ble_uuid = UUID('19B10001-E8F2-537E-4F6C-D104768A1214') # Characteristic UUID
+ble_service_uuid = UUID('19B10000-E8F2-537E-4F6C-D104768A1214') # Service UUID
 
 MAX_DISTANCE = 300
 
@@ -80,7 +80,8 @@ while True:
     
     try:
         # Connect to the Arduino Nano 33 BLE
-        peripheral = Peripheral()
+        # peripheral = Peripheral()
+        peripheral = Peripheral('A1:DC:B9:DC:2E:BA')
         peripheral.connect('A1:DC:B9:DC:2E:BA')
 
         # Discover the service and characteristic
