@@ -107,3 +107,4 @@ while True:
     angle = process_data(data)
     angle_char.notify(angle)
     time.sleep(0.01)
+
