@@ -20,16 +20,24 @@ class AngleCharacteristic(Characteristic):
     def __init__(self):
         Characteristic.__init__(self, {
             'uuid': 'fc0a',
-            'properties': ['write'],
+            'properties': ['notify'],
             'value': None
         })
         self._value = 0
         self._updateValueCallback = None
 
-    def onWriteRequest(self, data, offset, withoutResponse, callback):
-        self._value = data
-        print('Write request: value =', self._value)
-        callback(Characteristic.RESULT_SUCCESS)
+    def onSubscribe(self, maxValueSize, updateValueCallback):
+        print('AngleCharacteristic - onSubscribe')
+        self._updateValueCallback = updateValueCallback
+
+    def onUnsubscribe(self):
+        print('AngleCharacteristic - onUnsubscribe')
+        self._updateValueCallback = None
+
+    def notify(self, angle):
+        if self._updateValueCallback:
+            print('Sending notification with value:', str(angle))
+            self._updateValueCallback(str(angle).encode())
 
 def onStateChange(state):
     print('on -> stateChange: ' + state)
@@ -97,6 +105,5 @@ def process_data(data):
 while True:
     data = ser.readline().strip()
     angle = process_data(data)
-    angle_char._updateValueCallback = str(angle).encode()
+    angle_char.notify(angle)
     time.sleep(0.01)
-
