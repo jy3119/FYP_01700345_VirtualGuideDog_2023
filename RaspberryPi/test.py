@@ -24,6 +24,7 @@ class NotificationDelegate(DefaultDelegate):
 def process_data(data):
     grid_size = (360, 180)
     grid = np.zeros(grid_size)
+    data = data.decode().strip() 
     data = data.split(',')
     angle = int(data[0])
     dist_top = int(data[1]) * math.cos(math.radians(45))
