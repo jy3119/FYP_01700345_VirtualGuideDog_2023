@@ -1,82 +1,110 @@
+#include <Arduino_LSM9DS1.h>
+#include <Arduino_MadgwickIMU.h>
 #include <ArduinoBLE.h>
 
-#define VIBRATOR_1_PIN 2
-#define VIBRATOR_2_PIN 3
-#define VIBRATOR_3_PIN 4
-#define VIBRATOR_4_PIN 5
-#define VIBRATOR_5_PIN 6
+// BLE service and characteristic
+BLEService safeDirectionService("180D");
+BLEIntCharacteristic safeDirectionChar("2A37", BLERead | BLEWrite);
+
+// Vibration motors connected to pins 2-6
+int motors[5] = {2, 3, 4, 5, 6};
+
+// Update frequency for the Madgwick filter
+float updateFreq = 36.0;
+
+// Create Madgwick filter
+Madgwick filter;
+float roll, pitch, yaw;
 
 void setup() {
   Serial.begin(9600);
-  while(!Serial);
 
-  pinMode(VIBRATOR_1_PIN, OUTPUT);
-  pinMode(VIBRATOR_2_PIN, OUTPUT);
-  pinMode(VIBRATOR_3_PIN, OUTPUT);
-  pinMode(VIBRATOR_4_PIN, OUTPUT);
-  pinMode(VIBRATOR_5_PIN, OUTPUT);
-
-  if (!BLE.begin()) {
-    Serial.println("starting BLE failed!");
+  // Initialize IMU
+  if (!IMU.begin()) {
+    Serial.println("Failed to initialize IMU!");
     while (1);
   }
 
-  Serial.println("BLE started");
+  // Initialize motor pins as outputs
+  for (int i = 0; i < 5; i++) {
+    pinMode(motors[i], OUTPUT);
+  }
+
+  // Initialize the Madgwick filter
+  filter.begin(updateFreq);
+
+  // Begin BLE
+  if (!BLE.begin()) {
+    Serial.println("Failed to start BLE!");
+    while (1);
+  }
+
+  // Set the local name and service
+  BLE.setLocalName("Safe Direction Peripheral");
+  BLE.setAdvertisedService(safeDirectionService);
+
+  // Add the characteristic
+  safeDirectionService.addCharacteristic(safeDirectionChar);
+
+  // Add the service
+  BLE.addService(safeDirectionService);
+
+  // Start advertising
+  BLE.advertise();
 }
 
 void loop() {
-  BLEDevice peripheral = BLE.central();
+  // Check for a central device to connect
+  BLEDevice central = BLE.central();
 
-  if (peripheral) {
-    Serial.print("Connected to Central: ");
-    Serial.println(peripheral.address());
+  // If a central device is connected, read the IMU and update the motors
+  if (central) {
+    // Read IMU
+    if (IMU.accelerationAvailable() && IMU.gyroscopeAvailable()) {
+      float ax, ay, az, gx, gy, gz;
+      IMU.readAcceleration(ax, ay, az);
+      IMU.readGyroscope(gx, gy, gz);
 
-    if (peripheral.discoverAttributes()) {
-      Serial.println("Attributes discovered");
-    } else {
-      Serial.println("Attribute discovery failed!");
-      peripheral.disconnect();
-      return;
-    }
+      // Update the Madgwick filter
+      filter.updateIMU(gx, gy, gz, ax, ay, az);
+      roll = filter.getRoll();
+      pitch = filter.getPitch();
+      yaw = filter.getYaw();
 
-    BLEService service = peripheral.service("fc0a");
+      // Initialize all motors to off
+      for (int i = 0; i < 5; i++) {
+        digitalWrite(motors[i], LOW);
+      }
 
-    if (!service) {
-      Serial.println("Service not found!");
-      peripheral.disconnect();
-      return;
-    }
+      // Update safe direction if there's new data
+      if (safeDirectionChar.written()) {
+        int safeDirection = safeDirectionChar.value();
 
-    BLECharacteristic characteristic = service.characteristic("fc0a");
+        // Calculate the difference between the safe direction and the current head direction
+        int angleDiff = safeDirection - yaw;
 
-    if (!characteristic) {
-      Serial.println("Characteristic not found!");
-      peripheral.disconnect();
-      return;
-    }
-
-    if (characteristic.canRead()) {
-      characteristic.readValue();
-      int angle = characteristic.value().toInt();
-
-      // clear all motors
-      digitalWrite(VIBRATOR_1_PIN, LOW);
-      digitalWrite(VIBRATOR_2_PIN, LOW);
-      digitalWrite(VIBRATOR_3_PIN, LOW);
-      digitalWrite(VIBRATOR_4_PIN, LOW);
-      digitalWrite(VIBRATOR_5_PIN, LOW);
-
-      if (angle >= -90 && angle < -54) {
-        digitalWrite(VIBRATOR_1_PIN, HIGH);
-      } else if (angle >= -54 && angle < -18) {
-        digitalWrite(VIBRATOR_2_PIN, HIGH);
-      } else if (angle >= -18 && angle <= 18) {
-        digitalWrite(VIBRATOR_3_PIN, HIGH);
-      } else if (angle > 18 && angle <= 54) {
-        digitalWrite(VIBRATOR_4_PIN, HIGH);
-      } else if (angle > 54 && angle <= 90) {
-        digitalWrite(VIBRATOR_5_PIN, HIGH);
+        // Only provide haptic feedback if the safe direction is in front
+        if (angleDiff >= -90 && angleDiff <= 90) {
+          // Turn on the appropriate motor based on the angle difference
+          if (angleDiff >= -90 && angleDiff < -54) {
+            digitalWrite(motors[0], HIGH); // far left
+          }
+          else if (angleDiff >= -54 && angleDiff < -18) {
+            digitalWrite(motors[1], HIGH); // left
+          }
+          else if (angleDiff >= -18 && angleDiff < 18) {
+            digitalWrite(motors[2], HIGH); // center
+          }
+          else if (angleDiff >= 18 && angleDiff < 54) {
+            digitalWrite(motors[3], HIGH); // right
+          }
+          else if (angleDiff >= 54 && angleDiff <= 90) {
+            digitalWrite(motors[4], HIGH); // far right
+          }
+        }
       }
     }
+
+    delay(1000 / updateFreq);
   }
 }
