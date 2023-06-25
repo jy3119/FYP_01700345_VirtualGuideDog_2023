@@ -13,6 +13,11 @@ ble_service_uuid = UUID('180D')
 
 MAX_DISTANCE = 300
 
+# Repulsive potential field parameters
+K_rep = 1.0
+d_rep = 20.0
+
+
 class NotificationDelegate(DefaultDelegate):
     def __init__(self):
         DefaultDelegate.__init__(self)
@@ -20,7 +25,26 @@ class NotificationDelegate(DefaultDelegate):
     def handleNotification(self, cHandle, data):
         angle = int.from_bytes(data, byteorder='little')
         print('Received angle:', angle)
-        # TODO: Perform the desired action with the received angle
+
+
+def potential_field(grid):
+    U_rep = np.zeros(grid.shape)
+    min_val = np.inf
+    min_idx = None
+
+    for i in range(grid.shape[1]):
+        for j in range(grid.shape[0]):
+            if grid[j, i] == 1:  # obstacle
+                U_rep[j, i] = 0.5 * K_rep * ((1.0/d_rep) ** 2)
+            else:  # free space
+                U_rep[j, i] = 0
+
+            if U_rep[j, i] < min_val:
+                min_val = U_rep[j, i]
+                min_idx = (j, i)
+
+    return min_idx
+
 
 # Process sensor data
 def process_data(data):
