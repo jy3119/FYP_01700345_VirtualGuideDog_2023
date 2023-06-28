@@ -33,9 +33,9 @@ while True:
                     y = 100 + value * math.sin(angle_rad)
                     grid[int(y), int(x)] = 1
            
-            if downward == 1:
-                for y in range(200):
-                    grid[y, int(100 + 100 * math.cos(angle_rad))] = 1
+            # if downward == 1:
+            #     for y in range(200):
+            #         grid[y, int(100 + 100 * math.cos(angle_rad))] = 1
                    
     except Exception as e:
         print(e)
